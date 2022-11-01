@@ -11,8 +11,8 @@ Jane,  Anne,    JAnne, 415-123-4567, San Francisco
 $SecretVault = 'KPVaultJA'
 $ADCredential = (Get-Secret -Name 'Server_Admin' -Vault $SecretVault)
 
-$Session1 = New-PSSession -ComputerName 'AzureADConnect@contoso.com' -Credential $ADCredential
-$Session2 = New-PSSession -ComputerName 'Mail@Contoso.com' -Credential $ADCredential
+$Session1 = New-PSSession -ComputerName 'AzureADConnect.contoso.com' -Credential $ADCredential
+$Session2 = New-PSSession -ComputerName 'Mail.Contoso.com' -Credential $ADCredential
 
 Connect-MgGraph -Scopes "User.ReadWrite.All", "Directory.ReadWrite.All"
 
