@@ -1,4 +1,22 @@
 function Remove-RetrieveUser {
+    <#
+        .SYNOPSIS
+            Connects to Retrieve Public API and removes specific user
+        .DESCRIPTION
+            Retrieve Public API docs : https://api.retrieve.com/public-api-docs/
+            Using HTTP Basic Authentcation : https://developer.mozilla.org/en-US/docs/Web/HTTP/Authentication
+            Requires key:secret to be UTF-8 encoded
+        
+        .EXAMPLE
+            Remove-RetrieveUser -Email 'test@contoso.com'
+        .INPUTS
+            String - Email
+        .NOTES
+            v1
+            11/1/2022
+            Jonathan Ahrens
+    
+    #>
     [CmdletBinding()]
     param (
         [Parameter(
@@ -6,11 +24,11 @@ function Remove-RetrieveUser {
             ValueFromPipeline
         )]
         [string]
-        $Email
+        $Email        
     )
     
     begin {
-        $Vault = 'KPVault'
+        $Vault = 'KPVaultJA'
         $KeyID = (Get-Secret -Name 'Retrieve API Key' -AsPlainText -Vault $Vault)
         $AppSecret = (Get-Secret -Name 'Retrieve API Secret' -AsPlainText -Vault $Vault)
         $KeyIDPassword = $KeyID + ':' + $AppSecret
