@@ -1,4 +1,4 @@
-function Verb-Noun {
+function Remove-RetrieveUser {
     [CmdletBinding()]
     param (
         [Parameter(
@@ -22,8 +22,8 @@ function Verb-Noun {
     
     process {
         $Url = 'https://api.retrieve.com/api/v1/users?filterBy=email' + [System.Web.HttpUtility]::UrlEncode("=$Email")
-        $RetreiveUser = Invoke-RestMethod -Method 'Get' -Uri $Url -Headers $Header
-        $Url = 'https://api.retrieve.com/api/v1/users/' + $(RetriveUser.users.id)
+        $RetrieveUser = Invoke-RestMethod -Method 'Get' -Uri $Url -Headers $Header
+        $Url = 'https://api.retrieve.com/api/v1/users/' + $($RetrieveUser.users.id)
         Invoke-RestMethod -Method 'Delete' -Uri $Url -Headers $Header       
     }
     
