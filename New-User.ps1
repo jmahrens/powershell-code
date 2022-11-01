@@ -74,3 +74,4 @@ foreach ($User in $CreatedUsers){
 }
 
 Disconnect-MgGraph
+Get-PSSession | Remove-PSSession
