@@ -52,8 +52,6 @@ function Get-HmacSha256Hash {
     return $HmacSha.ComputeHash([Text.Encoding]::UTF8.GetBytes($Data))
 
 }
-$TestKey = [System.Text.Encoding]::UTF8.GetBytes("secretKey")
-$TestData = "Hello World"
 
 <#
     .SYNOPSIS
@@ -77,9 +75,12 @@ function Get-AwsSignatureKey {
 }
 
 function Get-CanonicalHeaders($Headers){
-    return $Headers.GetEnumerator() | Sort-Object -Property Name | ForEach-Object {"$($_.Key):$($_.Value)"
+    $SortedHeaders = [Ordered]@{}
+    $Headers.Keys | Sort-Object | ForEach-Object {
+        $Key = $_.ToLower()
+        $SortedHeaders[$Key] = $Headers[$_] }
+    return $SortedHeaders.GetEnumerator() | ForEach-Object {"$($_.Key):$($_.Value)"}
 }
-
 function Invoke-AwsWebRequest {
     [CmdletBinding()]
     param (
@@ -100,7 +101,14 @@ function Invoke-AwsWebRequest {
         [string] $AWSAccessKey,
 
         [Parameter(Position = 4)]
-        [string] $AwsServiceName = 'execute-api'
+        [string] $AwsServiceName = 'execute-api',
+
+        [Parameter(Position = 5,
+            HelpMessage = "Optional additional headers, key-value pair")]
+        [hashtable] $Header,
+
+        [Parameter(Mandatory, Position = 6)]
+        [string]$AwsRegion
     )
 
     DynamicParam {
@@ -111,7 +119,7 @@ function Invoke-AwsWebRequest {
             $parameterAttribute.HelpMessage = "Payload of your POST request"
         }
     }
-
+    process{
     #Set Current Date variable in AWS format
     $CurrentDate = Get-CurrentDate
     
@@ -126,32 +134,55 @@ function Invoke-AwsWebRequest {
     $ResourcePath = $RequestUri.Localpath
     
     #If querying mulitple items, format into a single line joined by '&'
-    $QueryParams = [System.Web.HttpUtility]::ParseQueryString($RequestUri.Query)
-    $CanonicalQuery = ($QueryParams.Keys | ForEach-Object {
-        "$($_)=" + [System.Web.HttpUtility]::UrlEncode($QueryParams.Item($_))
-    }) -join '&'
+    $QueryString = $RequestUri.Query
+    if (-not [string]::IsNullOrEmpty($QueryString)){
+        #Split the query into each key:value
+        $QueryParams = $QueryString.TrimStart('?') -split '&' | ForEach-Object {
+            $query = $_.split('=')
+            $EncodedKey = [System.Web.HttpUtility]::UrlEncode($query[0])
+            #If using a query without a value (http://s3.amazonaws.com/examplebucket?acl) set value to null (acl='')
+            if ($query.Length -eq 1){
+                "$EncodedKey=''"
+            }
+            else{
+                $EncodedValue = [System.Web.HttpUtility]::UrlEncode($query[1])
+                "$EncodedKey=$EncodedValue"
+            }
+        } | Sort-Object
+        $CanonicalQuery = $queryParams -join '&'
+    }
+    else {
+        ""
+    }
+    #Create a hashtable to accomidate custom headers & the ability to sort them
+    $CanonicalHeaders = @{}
+    #Modify headers/body depending on the method
     switch ($Method) {
         {'GET' -or 'DELETE'} { $Body = ""}
-        {'PUT' -or 'POST'} {$CanonicalHeaders = Get-CanonicalHeaders @{
-            "content-length" = $BodyBytes
-            "content-type" = "application/json"
-        }}
+        {'PUT' -or 'POST'} {
+            $CanonicalHeaders["content-length"] = $BodyBytes
+            $CanonicalHeaders["content-type"] = "application/json"
+        }
     }
-    $CanonicalHeaders = $CanonicalHeaders + (Get-CanonicalHeaders @{
-        "host" = $requestUri.Authority
-        "x-amz-date" = $UniversalTime
-    })
-    #TODO Add Custom Header(s) // param + functionality // use .toLower()
+    #Required Headers    
+    $CanonicalHeaders["host"] = $requestUri.Authority
+    $CanonicalHeaders["x-amz-date"] = $UniversalTime
+    #If custom headers are required, add them to the hashtable
+    if ($null -ne $Header) {
+        $header.GetEnumerator().ForEach({$CanonicalHeaders[$($_.Key)]=$($_.Value)})
+    }
+    $CompleteCanonicalHeaders = Get-CanonicalHeaders($Canonicalheaders)
+    #ODO Add Custom Header(s) // param + functionality // use .toLower()
     
     #Build CanonicalRequest
     $CanonicalRequestBuilder = [System.Text.StringBuilder]::new()
     $CanonicalRequestBuilder.AppendLine($Method)
     $CanonicalRequestBuilder.AppendLine($ResourcePath)
     $CanonicalRequestBuilder.AppendLine($CanonicalQuery)
-    $CanonicalHeaders | ForEach-Object { $CanonicalRequestBuilder.AppendLine($_) }
+    $CompleteCanonicalHeaders | ForEach-Object { $CanonicalRequestBuilder.AppendLine($_) }
     #Grab used headers for signed headers (alphabetical required)
     $Headers = [System.Collections.Generic.List[string]]::new()
-    $CanonicalHeaders | ForEach-Object { $Headers.add( $_.split(":")[0]) }
+    $CompleteCanonicalHeaders | ForEach-Object { $Headers.add( $_.split(":")[0]) }
     $SignedHeaders = $Headers -join ';'
     $CanonicalRequestBuilder.AppendLine($SignedHeaders)
     #Hash payload
@@ -161,10 +192,13 @@ function Invoke-AwsWebRequest {
     #Signed String
     $CredentialScope = "$($CurrentDate)/$($AwsRegion)/$($AwsServiceName)/aws4_request"
     $CanonicalRequestSha = Get-Sha256 -Body $CanonicalRequest
-    $CanonicalRequestHex = [System.BitConverter]::ToString($CanonicalRequestSha)
     $SignedString = ("AWS4-HMAC-SHA256",
                     $UniversalTime,
                     $CredentialScope,
                     $CanonicalRequestSha) -join "`n"
 
+    $SigningKey = Get-AwsSignatureKey -AccessKey $AwsAccessKey -Region $AwsRegion -ServiceName $AwsServiceName
+
+    Get-HmacSha256Hash -Key $SigningKey -Data $SignedString
+}
 }
